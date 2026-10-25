@@ -1,5 +1,7 @@
---[[   Leon's Helmet Off Consume: consuming an item while holding the modifier key takes the helmet off,
-       eats the item and puts the helmet back on. Uses FDDA Redone (447- FDDA Redone - lizzardman) animations:
+--[[   Leon's Helmet Off Consume: consuming an eatable item while wearing a helmet takes the helmet off and eats
+       the item. Optionally (MCM "Require modifier key") only while the modifier key is held. The helmet is put
+       back on after the item is consumed only if MCM "Re-equip helmet after use" is enabled, otherwise it stays off.
+       Uses FDDA Redone (447- FDDA Redone - lizzardman) animations:
        unequip animation (cosmetic, helmet is moved instantly), eat animation (item use), equip animation.
        Wraps itms_manager.actor_on_item_before_use after FDDA Redone has wrapped it (zzzz_ loads last).   ]] --
 
@@ -25,10 +27,14 @@ local WD_DELAY = 0.5
 --cached MCM values
 local cfg_enabled = true
 local cfg_modifier = 2
+local cfg_use_modifier = true
+local cfg_reequip = false
 
 --helmet taken off by the current consume sequence (object id and section)
 local pending_helmet_id = nil
 local pending_section = nil
+--true if the helmet should be put back on after the item is consumed (snapshot taken when the helmet is taken off)
+local pending_reequip = false
 
 --true while the watchdog time event exists in the _g time event queue
 local wd_active = false
@@ -54,6 +60,8 @@ function leons_hoc_refresh_config()
     if mcm and mcm.get_config then
         cfg_enabled = mcm.get_config("general/enable") and true or false
         cfg_modifier = mcm.get_config("general/modifier") or 2
+        cfg_use_modifier = mcm.get_config("general/use_modifier") and true or false
+        cfg_reequip = mcm.get_config("general/reequip") and true or false
     end
 end
 
@@ -89,6 +97,7 @@ end
 function leons_hoc_clear_pending()
     pending_helmet_id = nil
     pending_section = nil
+    pending_reequip = false
     RemoveTimeEvent(WD_GROUP, WD_NAME)
     wd_active = false
 end
@@ -157,6 +166,42 @@ function ta_leons_hoc_reequip()
     return a
 end
 
+--waits until the helmet is out of slot 12, eats the item (FDDA eat animation) and queues the re-equip after it
+function ta_leons_hoc_consume(item_id)
+    local a = {}
+    a.name = "leons_hoc_consume"
+    a.tag = "leons_hoc_consume"
+    a.can_skip = false
+    a.item_id = item_id
+    a.execute = function (self, time)
+        if db.actor:item_in_slot(12) ~= nil then
+            if time < 3 then
+                return lam2.states.running
+            end
+            --helmet is still on, nothing to re-equip
+            leons_hoc_clear_pending()
+            return lam2.states.success
+        end
+        local obj = level.object_by_id(self.item_id)
+        if obj and obj:parent() and obj:parent():id() == db.actor:id() then
+            if liz_fdda_redone_consumables and liz_fdda_redone_consumables.perform_item_use then
+                liz_fdda_redone_consumables.perform_item_use(obj)
+            else
+                db.actor:eat(obj)
+            end
+        end
+        --added after FDDA's eat action, so the order is unequip, eat, re-equip
+        if pending_reequip then
+            lam2.add_action(ta_leons_hoc_reequip())
+        else
+            --helmet stays off
+            leons_hoc_clear_pending()
+        end
+        return lam2.states.success
+    end
+    return a
+end
+
 --- ----------------------------------------------------------------------
 --- safety net
 --- ----------------------------------------------------------------------
@@ -179,6 +224,7 @@ function leons_hoc_watchdog()
     if not db.actor or not db.actor:alive() then
         pending_helmet_id = nil
         pending_section = nil
+        pending_reequip = false
         wd_active = false
         return true
     end
@@ -187,11 +233,12 @@ function leons_hoc_watchdog()
         return false
     end
     local helmet = leons_hoc_get_pending_helmet()
-    if helmet then
+    if helmet and pending_reequip then
         hga.on_toggle_equip(helmet)
     end
     pending_helmet_id = nil
     pending_section = nil
+    pending_reequip = false
     wd_active = false
     return true
 end
@@ -204,7 +251,7 @@ function leons_hoc_should_take_helmet_off(obj, flags)
     if not cfg_enabled or not hga then return false end
     if not flags.ret_value then return false end
     if pending_helmet_id ~= nil then return false end
-    if not leons_hoc_is_modifier_held(cfg_modifier) then return false end
+    if cfg_use_modifier and not leons_hoc_is_modifier_held(cfg_modifier) then return false end
     if not db.actor or not db.actor:alive() then return false end
     if not leons_hoc_fdda_consumables_enabled() then return false end
     if not ini_eff:section_exist(obj:section()) then return false end
@@ -222,17 +269,16 @@ itms_manager.actor_on_item_before_use = function (obj, flags)
     local helmet = db.actor:item_in_slot(12)
     pending_helmet_id = helmet:id()
     pending_section = helmet:section()
+    pending_reequip = cfg_reequip
 
     --move the helmet out of the slot before FDDA checks it (strict helmet mode), cosmetic unequip is queued
     db.actor:move_to_ruck(helmet)
     leons_hoc_update_mask_overlay()
     lam2.add_action(ta_leons_hoc_unequip_cosmetic(pending_section))
 
-    --FDDA appends its eat animation after the cosmetic unequip
-    orig_aoibu(obj, flags)
-
-    --re-equip after the eat animation
-    lam2.add_action(ta_leons_hoc_reequip())
+    --cancel the engine use, the item is eaten by the consume action once the helmet is out of the slot
+    flags.ret_value = false
+    lam2.add_action(ta_leons_hoc_consume(obj:id()))
     leons_hoc_schedule_watchdog()
 end
 
@@ -241,7 +287,7 @@ end
 --- ----------------------------------------------------------------------
 
 function on_save_state(m_data)
-    if pending_helmet_id ~= nil then
+    if pending_helmet_id ~= nil and pending_reequip then
         m_data.leons_hoc_pending_helmet_id = pending_helmet_id
     end
 end
@@ -249,6 +295,12 @@ end
 function on_load_state(m_data)
     pending_helmet_id = m_data.leons_hoc_pending_helmet_id
     pending_section = nil
+    --only saved when a re-equip was wanted
+    if pending_helmet_id ~= nil then
+        pending_reequip = true
+    else
+        pending_reequip = false
+    end
 end
 
 function leons_hoc_actor_on_first_update()

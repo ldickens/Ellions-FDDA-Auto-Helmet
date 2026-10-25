@@ -5,20 +5,36 @@
         <text>Helmet Off Consume</text>
     </string>
 
-    <string id="ui_mcm_leons_hoc_enable">
+    <string id="ui_mcm_leons_hoc_general_enable">
         <text>Enable</text>
     </string>
 
-    <string id="ui_mcm_leons_hoc_enable_desc">
-        <text>When you use a consumable while holding the modifier key and wear a helmet, the helmet is taken off, the item is consumed and the helmet is put back on.</text>
+    <string id="ui_mcm_leons_hoc_general_enable_desc">
+        <text>Take the helmet off when using an eatable item with a helmet on, then consume the item. See the options below for the modifier key and re-equipping.</text>
     </string>
 
-    <string id="ui_mcm_leons_hoc_modifier">
+    <string id="ui_mcm_leons_hoc_general_use_modifier">
+        <text>Require modifier key</text>
+    </string>
+
+    <string id="ui_mcm_leons_hoc_general_use_modifier_desc">
+        <text>If enabled, the helmet is only taken off when the modifier key is held while using the item. If disabled, it is taken off every time you use an eatable item with a helmet on.</text>
+    </string>
+
+    <string id="ui_mcm_leons_hoc_general_modifier">
         <text>Modifier key</text>
     </string>
 
-    <string id="ui_mcm_leons_hoc_modifier_desc">
-        <text>The key that must be held while using a consumable (quick slot or inventory) for the helmet to be taken off and put back on.</text>
+    <string id="ui_mcm_leons_hoc_general_modifier_desc">
+        <text>The key that must be held while using a consumable (quick slot or inventory) when 'Require modifier key' is enabled.</text>
+    </string>
+
+    <string id="ui_mcm_leons_hoc_general_reequip">
+        <text>Re-equip helmet after use</text>
+    </string>
+
+    <string id="ui_mcm_leons_hoc_general_reequip_desc">
+        <text>Put the helmet back on after the item has been consumed. If disabled, the helmet stays off.</text>
     </string>
 
 </string_table>
