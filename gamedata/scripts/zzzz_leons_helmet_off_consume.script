@@ -3,7 +3,8 @@
        back on after the item is consumed only if MCM "Re-equip helmet after use" is enabled, otherwise it stays off.
        Uses FDDA Redone (447- FDDA Redone - lizzardman) animations:
        unequip animation (cosmetic, helmet is moved instantly), eat animation (item use), equip animation.
-       Wraps itms_manager.actor_on_item_before_use after FDDA Redone has wrapped it (zzzz_ loads last).   ]] --
+       Wraps itms_manager.actor_on_item_before_use after FDDA Redone has wrapped it (zzzz_ loads last).
+       The removed helmet is also registered with FDDA's helmet hotkey so its toggle key can put it back on.   ]] --
 
 local hga = liz_fdda_redone_headgear_animations
 
@@ -273,6 +274,11 @@ itms_manager.actor_on_item_before_use = function (obj, flags)
 
     --move the helmet out of the slot before FDDA checks it (strict helmet mode), cosmetic unequip is queued
     db.actor:move_to_ruck(helmet)
+    --tell FDDA's helmet hotkey which helmet was taken off, so the toggle key can put it back on
+    local hotkey = liz_fdda_redone_headgear_animations_hotkey
+    if hotkey and hotkey.set_last_helmet then
+        hotkey.set_last_helmet(helmet)
+    end
     leons_hoc_update_mask_overlay()
     lam2.add_action(ta_leons_hoc_unequip_cosmetic(pending_section))
 
