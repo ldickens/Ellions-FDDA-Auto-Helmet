@@ -1,0 +1,34 @@
+--[[   Leon's Helmet Off Consume: MCM menu (id "leons_hoc").
+       MCM discovers this file by its *_mcm.script name and calls on_mcm_load.   ]] --
+
+local defaults = {
+    ["general/enable"] = true,
+    ["general/modifier"] = 2,
+}
+
+--key is relative to the mod, e.g. "general/enable" (full MCM path is "leons_hoc/general/enable")
+function get_config(key)
+    if ui_mcm then
+        local v = ui_mcm.get("leons_hoc/" .. key)
+        if v ~= nil then return v end
+    end
+    return defaults[key]
+end
+
+function on_mcm_load()
+    local op = {
+        id = "leons_hoc",
+        gr = {
+            {
+                id = "general",
+                sh = true,
+                gr = {
+                    { id = "slide", type = "slide", link = "ui_options_slider_player", text = "ui_mcm_menu_leons_hoc", size = { 512, 50 }, spacing = 20 },
+                    { id = "enable", type = "check", val = 1, def = true },
+                    { id = "modifier", type = ui_mcm.kb_mod_radio, val = 2, def = 2, hint = "mcm_kb_modifier", content = { { 1, "mcm_kb_mod_shift" }, { 2, "mcm_kb_mod_ctrl" }, { 3, "mcm_kb_mod_alt" } } },
+                }
+            },
+        }
+    }
+    return op
+end

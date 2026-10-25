@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+
+    <string id="ui_mcm_menu_leons_hoc">
+        <text>Helmet Off Consume</text>
+    </string>
+
+    <string id="ui_mcm_leons_hoc_enable">
+        <text>Enable</text>
+    </string>
+
+    <string id="ui_mcm_leons_hoc_enable_desc">
+        <text>When you use a consumable while holding the modifier key and wear a helmet, the helmet is taken off, the item is consumed and the helmet is put back on.</text>
+    </string>
+
+    <string id="ui_mcm_leons_hoc_modifier">
+        <text>Modifier key</text>
+    </string>
+
+    <string id="ui_mcm_leons_hoc_modifier_desc">
+        <text>The key that must be held while using a consumable (quick slot or inventory) for the helmet to be taken off and put back on.</text>
+    </string>
+
+</string_table>

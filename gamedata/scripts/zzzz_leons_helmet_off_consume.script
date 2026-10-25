@@ -1,0 +1,252 @@
+--[[   Leon's Helmet Off Consume: consuming an item while holding the modifier key takes the helmet off,
+       eats the item and puts the helmet back on. Uses FDDA Redone (447- FDDA Redone - lizzardman) animations:
+       unequip animation (cosmetic, helmet is moved instantly), eat animation (item use), equip animation.
+       Wraps itms_manager.actor_on_item_before_use after FDDA Redone has wrapped it (zzzz_ loads last).   ]] --
+
+local hga = liz_fdda_redone_headgear_animations
+
+--items that FDDA Redone would eat with animation (same check as liz_fdda_redone_consumables)
+local ini_eff = ini_file("items\\items\\animations_settings.ltx")
+
+--helmets that don't require nvg removal to equip or unequip (copy of the local table in the original module)
+local cosmetic_nvg_blacklist = {
+    ["helm_bandana"] = true,
+    ["helm_rp_bala"] = true,
+    ["helm_resp"] = true,
+    ["helm_cloth_mask"] = true,
+}
+
+local cosmetic_ini_blacklist = ini_file("items\\items\\headgear_blacklist.ltx")
+
+local WD_GROUP = "leons_hoc"
+local WD_NAME = "watchdog"
+local WD_DELAY = 0.5
+
+--cached MCM values
+local cfg_enabled = true
+local cfg_modifier = 2
+
+--helmet taken off by the current consume sequence (object id and section)
+local pending_helmet_id = nil
+local pending_section = nil
+
+local orig_aoibu = itms_manager.actor_on_item_before_use
+
+--- ----------------------------------------------------------------------
+--- init
+--- ----------------------------------------------------------------------
+
+function on_game_start()
+    RegisterScriptCallback("on_option_change", leons_hoc_refresh_config)
+    RegisterScriptCallback("actor_on_first_update", leons_hoc_actor_on_first_update)
+    RegisterScriptCallback("actor_on_before_death", leons_hoc_actor_on_before_death)
+    lam2.Subscribe("on_anim_queue_stop", leons_hoc_on_anim_queue_stop)
+    leons_hoc_refresh_config()
+end
+
+function leons_hoc_refresh_config()
+    local mcm = zzzz_leons_helmet_off_consume_mcm
+    if mcm and mcm.get_config then
+        cfg_enabled = mcm.get_config("general/enable") and true or false
+        cfg_modifier = mcm.get_config("general/modifier") or 2
+    end
+end
+
+--- ----------------------------------------------------------------------
+--- utils
+--- ----------------------------------------------------------------------
+
+function leons_hoc_fdda_consumables_enabled()
+    return liz_fdda_redone_mcm ~= nil and liz_fdda_redone_mcm.get_config("consumables/enable") and true or false
+end
+
+function leons_hoc_is_modifier_held(val)
+    if val ~= 1 and val ~= 2 and val ~= 3 then return false end
+    if ui_mcm and ui_mcm.get_mod_key then
+        return ui_mcm.get_mod_key(val) and true or false
+    end
+    if val == 1 then
+        return (key_state(DIK_keys.DIK_LSHIFT) or 0) ~= 0 or (key_state(DIK_keys.DIK_RSHIFT) or 0) ~= 0
+    elseif val == 2 then
+        return (key_state(DIK_keys.DIK_LCONTROL) or 0) ~= 0 or (key_state(DIK_keys.DIK_RCONTROL) or 0) ~= 0
+    else
+        return (key_state(DIK_keys.DIK_LMENU) or 0) ~= 0 or (key_state(DIK_keys.DIK_RMENU) or 0) ~= 0
+    end
+end
+
+function leons_hoc_update_mask_overlay()
+    if ui_options and ui_options.get and ui_options.get("video/player/mask_hud") and actor_effects and actor_effects.Update_Mask then
+        actor_effects.Update_Mask(db.actor)
+    end
+end
+
+function leons_hoc_clear_pending()
+    pending_helmet_id = nil
+    pending_section = nil
+    RemoveTimeEvent(WD_GROUP, WD_NAME)
+end
+
+function leons_hoc_schedule_watchdog(delay)
+    RemoveTimeEvent(WD_GROUP, WD_NAME)
+    CreateTimeEvent(WD_GROUP, WD_NAME, delay or WD_DELAY, leons_hoc_watchdog)
+end
+
+--returns the pending helmet if it is still in the ruck and slot 12 is free, nil otherwise
+function leons_hoc_get_pending_helmet()
+    if pending_helmet_id == nil then return nil end
+    local obj = level.object_by_id(pending_helmet_id)
+    if obj and obj:parent() and obj:parent():id() == db.actor:id() and db.actor:item_in_slot(12) == nil then
+        return obj
+    end
+    return nil
+end
+
+--- ----------------------------------------------------------------------
+--- action templates
+--- ----------------------------------------------------------------------
+
+--actions here added in backwards order (from bottom to top) cuz we add them at the beginning of the queue (lam2.add_action_first)
+function ta_leons_hoc_unequip_cosmetic(section)
+    local a = {}
+    a.name = "leons_hoc_headgear_unequip_cosmetic"
+    a.section = section
+    a.execute = function (self, time)
+        --animation
+        if not cosmetic_ini_blacklist:section_exist(self.section) then
+            lam2.add_action_first(hga.ta_animation_unequip(self.section))
+        end
+        --fade
+        if hga.is_use_fade(self.section) then
+            lam2.add_action_first(hga.ta_unequip_fade())
+        end
+        --nvg
+        if not cosmetic_nvg_blacklist[self.section] then
+            lam2.add_action_first(hga.ta_try_set_nightvision(false))
+        end
+        return lam2.states.success
+    end
+    return a
+end
+
+--queued after the eat action; plays the FDDA equip animation if the helmet can still be put back on
+function ta_leons_hoc_reequip()
+    local a = {}
+    a.tag = "leons_hoc_reequip"
+    a.name = "leons_hoc_helmet_reequip"
+    a.can_skip = false
+    a.execute = function (self, time)
+        local helmet = leons_hoc_get_pending_helmet()
+        if helmet then
+            hga.on_toggle_equip(helmet)
+        end
+        leons_hoc_clear_pending()
+        return lam2.states.success
+    end
+    return a
+end
+
+--- ----------------------------------------------------------------------
+--- safety net
+--- ----------------------------------------------------------------------
+
+--lam2 queue was aborted (death, abort) and our re-equip action may have been purged
+--run the check on a time event, because lam2 is still resetting inside the callback
+function leons_hoc_on_anim_queue_stop()
+    if pending_helmet_id ~= nil then
+        leons_hoc_schedule_watchdog(0.1)
+    end
+end
+
+function leons_hoc_watchdog()
+    if pending_helmet_id == nil then return end
+    if not db.actor or not db.actor:alive() then
+        leons_hoc_clear_pending()
+        return
+    end
+    if lam2.is_running() or lam2.has_queued_actions() then
+        leons_hoc_schedule_watchdog()
+        return
+    end
+    local helmet = leons_hoc_get_pending_helmet()
+    if helmet then
+        hga.on_toggle_equip(helmet)
+    end
+    leons_hoc_clear_pending()
+end
+
+--- ----------------------------------------------------------------------
+--- main
+--- ----------------------------------------------------------------------
+
+function leons_hoc_should_take_helmet_off(obj, flags)
+    if not cfg_enabled or not hga then return false end
+    if not flags.ret_value then return false end
+    if pending_helmet_id ~= nil then return false end
+    if not leons_hoc_is_modifier_held(cfg_modifier) then return false end
+    if not db.actor or not db.actor:alive() then return false end
+    if not leons_hoc_fdda_consumables_enabled() then return false end
+    if not ini_eff:section_exist(obj:section()) then return false end
+    --FDDA would refuse the use anyway
+    if IsMoveState("mcClimb") or IsMoveState("mcSprint") then return false end
+    return db.actor:item_in_slot(12) ~= nil
+end
+
+itms_manager.actor_on_item_before_use = function (obj, flags)
+    if not leons_hoc_should_take_helmet_off(obj, flags) then
+        orig_aoibu(obj, flags)
+        return
+    end
+
+    local helmet = db.actor:item_in_slot(12)
+    pending_helmet_id = helmet:id()
+    pending_section = helmet:section()
+
+    --move the helmet out of the slot before FDDA checks it (strict helmet mode), cosmetic unequip is queued
+    db.actor:move_to_ruck(helmet)
+    leons_hoc_update_mask_overlay()
+    lam2.add_action(ta_leons_hoc_unequip_cosmetic(pending_section))
+
+    --FDDA appends its eat animation after the cosmetic unequip
+    orig_aoibu(obj, flags)
+
+    --re-equip after the eat animation
+    lam2.add_action(ta_leons_hoc_reequip())
+    leons_hoc_schedule_watchdog()
+end
+
+--- ----------------------------------------------------------------------
+--- persistance
+--- ----------------------------------------------------------------------
+
+function on_save_state(m_data)
+    if pending_helmet_id ~= nil then
+        m_data.leons_hoc_pending_helmet_id = pending_helmet_id
+    end
+end
+
+function on_load_state(m_data)
+    pending_helmet_id = m_data.leons_hoc_pending_helmet_id
+    pending_section = nil
+end
+
+function leons_hoc_actor_on_first_update()
+    if pending_helmet_id == nil then return end
+    local id = pending_helmet_id
+    local found = nil
+    local function itr(actor, item)
+        if item:id() == id then
+            found = item
+        end
+    end
+    db.actor:iterate_ruck(itr, nil)
+    if found and db.actor:item_in_slot(12) == nil then
+        db.actor:move_to_slot(found, 12)
+        leons_hoc_update_mask_overlay()
+    end
+    leons_hoc_clear_pending()
+end
+
+function leons_hoc_actor_on_before_death()
+    leons_hoc_clear_pending()
+end
+
