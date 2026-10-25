@@ -30,6 +30,9 @@ local cfg_modifier = 2
 local pending_helmet_id = nil
 local pending_section = nil
 
+--true while the watchdog time event exists in the _g time event queue
+local wd_active = false
+
 local orig_aoibu = itms_manager.actor_on_item_before_use
 
 --- ----------------------------------------------------------------------
@@ -40,6 +43,8 @@ function on_game_start()
     RegisterScriptCallback("on_option_change", leons_hoc_refresh_config)
     RegisterScriptCallback("actor_on_first_update", leons_hoc_actor_on_first_update)
     RegisterScriptCallback("actor_on_before_death", leons_hoc_actor_on_before_death)
+    RegisterScriptCallback("save_state", on_save_state)
+    RegisterScriptCallback("load_state", on_load_state)
     lam2.Subscribe("on_anim_queue_stop", leons_hoc_on_anim_queue_stop)
     leons_hoc_refresh_config()
 end
@@ -80,15 +85,22 @@ function leons_hoc_update_mask_overlay()
     end
 end
 
+--never call from inside leons_hoc_watchdog (time event callback)
 function leons_hoc_clear_pending()
     pending_helmet_id = nil
     pending_section = nil
     RemoveTimeEvent(WD_GROUP, WD_NAME)
+    wd_active = false
 end
 
+--safe to call from anywhere: resets the existing event or creates it
 function leons_hoc_schedule_watchdog(delay)
-    RemoveTimeEvent(WD_GROUP, WD_NAME)
-    CreateTimeEvent(WD_GROUP, WD_NAME, delay or WD_DELAY, leons_hoc_watchdog)
+    if wd_active then
+        ResetTimeEvent(WD_GROUP, WD_NAME, delay or WD_DELAY)
+    else
+        CreateTimeEvent(WD_GROUP, WD_NAME, delay or WD_DELAY, leons_hoc_watchdog)
+        wd_active = true
+    end
 end
 
 --returns the pending helmet if it is still in the ruck and slot 12 is free, nil otherwise
@@ -157,21 +169,31 @@ function leons_hoc_on_anim_queue_stop()
     end
 end
 
+--time event callback: must not call RemoveTimeEvent/CreateTimeEvent (ProcessEventQueue is iterating)
+--returns false to keep the event, true to remove it
 function leons_hoc_watchdog()
-    if pending_helmet_id == nil then return end
+    if pending_helmet_id == nil then
+        wd_active = false
+        return true
+    end
     if not db.actor or not db.actor:alive() then
-        leons_hoc_clear_pending()
-        return
+        pending_helmet_id = nil
+        pending_section = nil
+        wd_active = false
+        return true
     end
     if lam2.is_running() or lam2.has_queued_actions() then
-        leons_hoc_schedule_watchdog()
-        return
+        ResetTimeEvent(WD_GROUP, WD_NAME, WD_DELAY)
+        return false
     end
     local helmet = leons_hoc_get_pending_helmet()
     if helmet then
         hga.on_toggle_equip(helmet)
     end
-    leons_hoc_clear_pending()
+    pending_helmet_id = nil
+    pending_section = nil
+    wd_active = false
+    return true
 end
 
 --- ----------------------------------------------------------------------
@@ -249,4 +271,3 @@ end
 function leons_hoc_actor_on_before_death()
     leons_hoc_clear_pending()
 end
-
