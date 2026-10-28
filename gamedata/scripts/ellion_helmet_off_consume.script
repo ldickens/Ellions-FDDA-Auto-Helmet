@@ -61,7 +61,7 @@ function on_game_start()
 end
 
 function ellions_hoc_refresh_config()
-    local mcm = zzzz_ellions_helmet_off_consume_mcm
+    local mcm = ellion_helmet_off_consume_mcm
     if mcm and mcm.get_config then
         cfg_enabled = mcm.get_config("general/enable") and true or false
         cfg_modifier = mcm.get_config("general/modifier") or 2
