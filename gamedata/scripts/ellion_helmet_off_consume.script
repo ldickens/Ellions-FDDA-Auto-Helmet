@@ -3,7 +3,10 @@
        back on after the item is consumed only if MCM "Re-equip helmet after use" is enabled, otherwise it stays off.
        Uses FDDA Redone (447- FDDA Redone - lizzardman) animations:
        unequip animation (cosmetic, helmet is moved instantly), eat animation (item use), equip animation.
-       Wraps itms_manager.actor_on_item_before_use after FDDA Redone has wrapped it (zzzz_ loads last).
+       Wraps FDDA's public liz_fdda_redone_consumables.modifiedAOIBU in on_game_start. Both FDDA's hook and its
+       western goods patch look that function up at call time, so this works regardless of script load order.
+       Base itms_manager checks (e.g. required tools) run before it, and a refused use (flags.ret_value == false)
+       is respected.
        The removed helmet is also registered with FDDA's helmet hotkey so its toggle key can put it back on.
        The helmet is only taken off for items it blocks (helm = false in FDDA's animations_settings); headgear
        listed in FDDA's headgear_item_use_whitelist.ltx is left on.   ]] --
@@ -44,7 +47,8 @@ local pending_reequip = false
 --true while the watchdog time event exists in the _g time event queue
 local wd_active = false
 
-local orig_aoibu = itms_manager.actor_on_item_before_use
+--original liz_fdda_redone_consumables.modifiedAOIBU, captured once in on_game_start
+local orig_modified_aoibu = nil
 
 --- ----------------------------------------------------------------------
 --- init
@@ -58,6 +62,18 @@ function on_game_start()
     RegisterScriptCallback("load_state", on_load_state)
     lam2.Subscribe("on_anim_queue_stop", ellions_hoc_on_anim_queue_stop)
     ellions_hoc_refresh_config()
+    local cons = liz_fdda_redone_consumables
+    if cons and type(cons.modifiedAOIBU) == "function" then
+        if not orig_modified_aoibu then
+            orig_modified_aoibu = cons.modifiedAOIBU
+            cons.modifiedAOIBU = function(obj, flags)
+                if ellions_hoc_try_take_helmet_off(obj, flags) then return end
+                orig_modified_aoibu(obj, flags)
+            end
+        end
+    else
+        printf("! [Ellion Helmet Off Consume] liz_fdda_redone_consumables.modifiedAOIBU not found - helmet off consume disabled")
+    end
 end
 
 function ellions_hoc_refresh_config()
@@ -271,10 +287,10 @@ function ellions_hoc_should_take_helmet_off(obj, flags)
     return true
 end
 
-itms_manager.actor_on_item_before_use = function (obj, flags)
+--returns true if the use was handled (helmet taken off, consume queued), false otherwise
+function ellions_hoc_try_take_helmet_off(obj, flags)
     if not ellions_hoc_should_take_helmet_off(obj, flags) then
-        orig_aoibu(obj, flags)
-        return
+        return false
     end
 
     local helmet = db.actor:item_in_slot(12)
@@ -296,6 +312,7 @@ itms_manager.actor_on_item_before_use = function (obj, flags)
     flags.ret_value = false
     lam2.add_action(ta_ellions_hoc_consume(obj:id()))
     ellions_hoc_schedule_watchdog()
+    return true
 end
 
 --- ----------------------------------------------------------------------
