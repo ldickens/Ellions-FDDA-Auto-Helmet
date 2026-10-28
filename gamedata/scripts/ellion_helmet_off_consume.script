@@ -4,12 +4,16 @@
        Uses FDDA Redone (447- FDDA Redone - lizzardman) animations:
        unequip animation (cosmetic, helmet is moved instantly), eat animation (item use), equip animation.
        Wraps itms_manager.actor_on_item_before_use after FDDA Redone has wrapped it (zzzz_ loads last).
-       The removed helmet is also registered with FDDA's helmet hotkey so its toggle key can put it back on.   ]] --
+       The removed helmet is also registered with FDDA's helmet hotkey so its toggle key can put it back on.
+       The helmet is only taken off for items it blocks (helm = false in FDDA's animations_settings); headgear
+       listed in FDDA's headgear_item_use_whitelist.ltx is left on.   ]] --
 
 local hga = liz_fdda_redone_headgear_animations
 
 --items that FDDA Redone would eat with animation (same check as liz_fdda_redone_consumables)
 local ini_eff = ini_file("items\\items\\animations_settings.ltx")
+--headgear that doesn't block eating (shipped by FDDA Redone, 447)
+local ini_helmet_whitelist = ini_file("items\\items\\headgear_item_use_whitelist.ltx")
 
 --helmets that don't require nvg removal to equip or unequip (copy of the local table in the original module)
 local cosmetic_nvg_blacklist = {
@@ -256,9 +260,15 @@ function leons_hoc_should_take_helmet_off(obj, flags)
     if not db.actor or not db.actor:alive() then return false end
     if not leons_hoc_fdda_consumables_enabled() then return false end
     if not ini_eff:section_exist(obj:section()) then return false end
+    --only items the helmet blocks (same rule as FDDA strict helmets: helm = false; missing or true means usable with a helmet on)
+    if ini_eff:r_bool_ex(obj:section(), "helm") ~= false then return false end
     --FDDA would refuse the use anyway
     if IsMoveState("mcClimb") or IsMoveState("mcSprint") then return false end
-    return db.actor:item_in_slot(12) ~= nil
+    local helmet = db.actor:item_in_slot(12)
+    if not helmet then return false end
+    --light headgear (bandana, balaclava, cloth mask, hardhats...) doesn't need to come off
+    if ini_helmet_whitelist:section_exist(helmet:section()) then return false end
+    return true
 end
 
 itms_manager.actor_on_item_before_use = function (obj, flags)
