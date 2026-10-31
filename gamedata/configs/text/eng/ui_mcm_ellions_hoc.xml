@@ -37,4 +37,12 @@
         <text>Put the helmet back on after the item has been consumed. If disabled, the helmet stays off.</text>
     </string>
 
+    <string id="ui_mcm_ellions_hoc_general_instant_unequip">
+        <text>Instant helmet unequip</text>
+    </string>
+
+    <string id="ui_mcm_ellions_hoc_general_instant_unequip_desc">
+        <text>When taking the helmet off from the inventory or with the FDDA helmet hotkey.</text>
+    </string>
+
 </string_table>

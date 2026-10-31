@@ -6,19 +6,24 @@ local defaults = {
     ["general/use_modifier"] = true,
     ["general/modifier"] = 2,
     ["general/reequip"] = false,
+    ["general/instant_unequip"] = true,
 }
 
---key is relative to the mod, e.g. "general/enable" (full MCM path is "ellions_hoc/general/enable")
+---Returns the MCM value for a key, or the default when MCM is not installed or has no value yet.
+---@param key string Key relative to the mod, e.g. "general/enable" (full MCM path is "ellions_hoc/general/enable").
+---@return any config_value The current MCM value, or the default from the defaults table.
 function get_config(key)
     if ui_mcm then
-        local v = ui_mcm.get("ellions_hoc/" .. key)
-        if v ~= nil then return v end
+        local mcm_value = ui_mcm.get("ellions_hoc/" .. key)
+        if mcm_value ~= nil then return mcm_value end
     end
     return defaults[key]
 end
 
+---Builds the MCM options table for this mod. Called by MCM when it loads the mod's menu.
+---@return table mcm_options MCM options table with the "ellions_hoc" id and its groups.
 function on_mcm_load()
-    local op = {
+    local mcm_options = {
         id = "ellions_hoc",
         gr = {
             {
@@ -30,9 +35,10 @@ function on_mcm_load()
                     { id = "use_modifier", type = "check", val = 1, def = true },
                     { id = "modifier", type = ui_mcm.kb_mod_radio, val = 2, def = 2, content = { { 1, "mcm_kb_mod_shift" }, { 2, "mcm_kb_mod_ctrl" }, { 3, "mcm_kb_mod_alt" } } },
                     { id = "reequip", type = "check", val = 1, def = false },
+                    { id = "instant_unequip", type = "check", val = 1, def = true },
                 }
             },
         }
     }
-    return op
+    return mcm_options
 end
