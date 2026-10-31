@@ -65,7 +65,7 @@ function on_mcm_load()
                 gr = {
                     { id = "slide", type = "slide", link = "ui_options_slider_player", text = "ui_mcm_menu_ellions_auto_helmet", size = { 512, 50 }, spacing = 20 },
                     { id = "enable", type = "check", val = 1, def = true },
-                    { id = "use_modifier", type = "check", val = 1, def = true },
+                    { id = "use_modifier", type = "check", val = 1, def = false },
                     { id = "modifier", type = ui_mcm.kb_mod_radio, val = 2, def = 2, content = { { 1, "mcm_kb_mod_shift" }, { 2, "mcm_kb_mod_ctrl" }, { 3, "mcm_kb_mod_alt" } } },
                     { id = "reequip", type = "check", val = 1, def = false },
                     { id = "instant_unequip", type = "check", val = 1, def = true },
