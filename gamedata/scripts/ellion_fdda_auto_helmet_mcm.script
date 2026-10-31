@@ -1,6 +1,15 @@
 --[[   Ellion's FDDA Auto Helmet: MCM menu (id "ellions_auto_helmet").
        MCM discovers this file by its *_mcm.script name and calls on_mcm_load.   ]] --
 
+---Default values of the MCM options, used when MCM is not installed or has no value yet.
+---@class EllionsAutoHelmetConfig
+---@field ["general/enable"] boolean Auto helmet on or off.
+---@field ["general/use_modifier"] boolean True to take the helmet off only while the modifier key is held.
+---@field ["general/modifier"] integer Modifier key index: 1 shift, 2 ctrl, 3 alt.
+---@field ["general/reequip"] boolean True to put the helmet back on after the item is consumed.
+---@field ["general/instant_unequip"] boolean True to unequip the helmet instantly from the inventory and helmet hotkey.
+
+---@type EllionsAutoHelmetConfig
 local defaults = {
     ["general/enable"] = true,
     ["general/use_modifier"] = true,
@@ -9,9 +18,32 @@ local defaults = {
     ["general/instant_unequip"] = true,
 }
 
+---One MCM control (slider, check box or radio) inside a group.
+---@class EllionsAutoHelmetMcmOption
+---@field id string Option id, the MCM key is "ellions_auto_helmet/<group id>/<option id>".
+---@field type any MCM control type: a string such as "check" or "slide", or a ui_mcm control constant (ui_mcm.kb_mod_radio).
+---@field val integer|nil MCM value type flag of the control.
+---@field def boolean|integer|nil Default value shown by MCM.
+---@field link string|nil Options page the slider links to.
+---@field text string|nil String id of the control label.
+---@field size integer[]|nil Width and height of the control.
+---@field spacing integer|nil Vertical spacing after the control.
+---@field content [integer, string][]|nil Radio choices as {value, string id} pairs.
+
+---A group of MCM controls.
+---@class EllionsAutoHelmetMcmGroup
+---@field id string Group id, used in the MCM key path.
+---@field sh boolean|nil True to show the group as a section.
+---@field gr EllionsAutoHelmetMcmOption[] Controls in the group.
+
+---MCM options table returned by on_mcm_load.
+---@class EllionsAutoHelmetMcmOptions
+---@field id string MCM menu id.
+---@field gr EllionsAutoHelmetMcmGroup[] Groups of the menu.
+
 ---Returns the MCM value for a key, or the default when MCM is not installed or has no value yet.
 ---@param key string Key relative to the mod, e.g. "general/enable" (full MCM path is "ellions_auto_helmet/general/enable").
----@return any config_value The current MCM value, or the default from the defaults table.
+---@return boolean|integer|nil config_value The current MCM value, or the default from the defaults table.
 function get_config(key)
     if ui_mcm then
         local mcm_value = ui_mcm.get("ellions_auto_helmet/" .. key)
@@ -21,8 +53,9 @@ function get_config(key)
 end
 
 ---Builds the MCM options table for this mod. Called by MCM when it loads the mod's menu.
----@return table mcm_options MCM options table with the "ellions_auto_helmet" id and its groups.
+---@return EllionsAutoHelmetMcmOptions mcm_options MCM options table with the "ellions_auto_helmet" id and its groups.
 function on_mcm_load()
+    ---@type EllionsAutoHelmetMcmOptions
     local mcm_options = {
         id = "ellions_auto_helmet",
         gr = {

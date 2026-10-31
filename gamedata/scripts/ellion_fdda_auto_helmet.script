@@ -25,12 +25,24 @@
 ---@field can_skip boolean|nil False if the action must not be skipped by lam2.
 ---@field execute fun(self: EllionsAutoHelmetAction, elapsed_time: number): number Runs the action and returns a lam2 state.
 
+---FDDA use flags passed to liz_fdda_redone_consumables.modifiedAOIBU. Only ret_value is read or written by this mod.
+---@class EllionsAutoHelmetUseFlags
+---@field ret_value boolean False when FDDA refuses the use; set to false when the use is taken over by this mod.
+
+---Save data table of the save_state / load_state callbacks.
+---@class EllionsAutoHelmetSaveData
+---@field ellions_auto_helmet_pending_helmet_id integer|nil Id of the helmet to put back on after a load. Only saved when a re-equip is wanted.
+---@field ellions_hoc_pending_helmet_id integer|nil Legacy key written by the old mod name, read once on load for migration and cleared.
+
 --items that FDDA Redone would eat with animation (same check as liz_fdda_redone_consumables)
+---@type ini_file
 local animations_settings_ini = ini_file("items\\items\\animations_settings.ltx")
 --headgear that doesn't block eating (shipped by FDDA Redone, 447)
+---@type ini_file
 local ini_helmet_whitelist = ini_file("items\\items\\headgear_item_use_whitelist.ltx")
 
 --helmets that don't require nvg removal to equip or unequip (copy of the local table in the original module)
+---@type table<string, boolean>
 local cosmetic_nvg_blacklist = {
     ["helm_bandana"] = true,
     ["helm_rp_bala"] = true,
@@ -38,36 +50,53 @@ local cosmetic_nvg_blacklist = {
     ["helm_cloth_mask"] = true,
 }
 
+---@type ini_file
 local cosmetic_ini_blacklist = ini_file("items\\items\\headgear_blacklist.ltx")
 
+---@type string
 local WD_GROUP = "ellions_auto_helmet"
+---@type string
 local WD_NAME = "watchdog"
+---@type number
 local WD_DELAY = 0.5
 
 --cached MCM values
+---@type boolean
 local cfg_enabled = true
+---@type integer
 local cfg_modifier = 2
+---@type boolean
 local cfg_use_modifier = true
+---@type boolean
 local cfg_reequip = false
+---@type boolean
 local cfg_instant_unequip = true
 
 --helmet taken off by the current consume sequence (object id and section)
+---@type integer|nil
 local pending_helmet_id = nil
+---@type string|nil
 local pending_section = nil
 --true if the helmet should be put back on after the item is consumed (snapshot taken when the helmet is taken off)
+---@type boolean
 local pending_reequip = false
 
 --true while the watchdog time event exists in the _g time event queue
+---@type boolean
 local wd_active = false
 
 --original liz_fdda_redone_consumables.modifiedAOIBU, captured once in on_game_start
+---@type (fun(item_object: game_object, flags: EllionsAutoHelmetUseFlags): any)|nil
 local orig_modified_aoibu = nil
 
 --FDDA Redone headgear module (liz_fdda_redone_headgear_animations), resolved in on_game_start
+---@type table|nil
 local headgear_module = nil
 
 --originals of FDDA's headgear unequip functions, captured once in on_game_start
+---@type (fun(item_object: game_object, bag_name: string): any)|nil
 local original_on_unequip = nil
+---@type (fun(item_object: game_object): any)|nil
 local original_on_toggle_unequip = nil
 
 ---Single logging entry point for this mod. Calls printf with one argument only (no format args).
@@ -121,13 +150,13 @@ end
 ---Reads the MCM values into the cached config variables. Runs on game start and when options change.
 ---@return nil
 function ellions_auto_helmet_refresh_config()
-    local mcm = ellion_fdda_auto_helmet_mcm
-    if mcm and mcm.get_config then
-        cfg_enabled = mcm.get_config("general/enable") and true or false
-        cfg_modifier = mcm.get_config("general/modifier") or 2
-        cfg_use_modifier = mcm.get_config("general/use_modifier") and true or false
-        cfg_reequip = mcm.get_config("general/reequip") and true or false
-        cfg_instant_unequip = mcm.get_config("general/instant_unequip") and true or false
+    local mcm_module = ellion_fdda_auto_helmet_mcm
+    if mcm_module and mcm_module.get_config then
+        cfg_enabled = mcm_module.get_config("general/enable") and true or false
+        cfg_modifier = mcm_module.get_config("general/modifier") or 2
+        cfg_use_modifier = mcm_module.get_config("general/use_modifier") and true or false
+        cfg_reequip = mcm_module.get_config("general/reequip") and true or false
+        cfg_instant_unequip = mcm_module.get_config("general/instant_unequip") and true or false
     end
 end
 
@@ -230,6 +259,10 @@ function ta_ellions_auto_helmet_unequip_cosmetic(section)
     local action = {}
     action.name = "ellions_auto_helmet_headgear_unequip_cosmetic"
     action.section = section
+    ---Queues the cosmetic unequip steps (animation, fade, nightvision) for the action's helmet section.
+    ---@param self EllionsAutoHelmetAction The action being executed; self.section is the helmet section.
+    ---@param elapsed_time number Seconds the action has been running.
+    ---@return number lam2_state lam2 state, always success.
     action.execute = function (self, elapsed_time)
         --animation
         if not cosmetic_ini_blacklist:section_exist(self.section) then
@@ -257,6 +290,10 @@ function ta_ellions_auto_helmet_reequip()
     action.tag = "ellions_auto_helmet_reequip"
     action.name = "ellions_auto_helmet_helmet_reequip"
     action.can_skip = false
+    ---Puts the pending helmet back on with FDDA's equip handler, then clears the pending state.
+    ---@param self EllionsAutoHelmetAction The action being executed.
+    ---@param elapsed_time number Seconds the action has been running.
+    ---@return number lam2_state lam2 state, always success.
     action.execute = function (self, elapsed_time)
         local helmet_object = ellions_auto_helmet_get_pending_helmet()
         if helmet_object then
@@ -279,6 +316,10 @@ function ta_ellions_auto_helmet_consume(item_id)
     action.tag = "ellions_auto_helmet_consume"
     action.can_skip = false
     action.item_id = item_id
+    ---Waits until the helmet has left slot 12, eats the item and queues the re-equip if it is wanted.
+    ---@param self EllionsAutoHelmetAction The action being executed; self.item_id is the item to eat.
+    ---@param elapsed_time number Seconds the action has been running.
+    ---@return number lam2_state lam2 state: running while waiting, success when done.
     action.execute = function (self, elapsed_time)
         if db.actor:item_in_slot(12) ~= nil then
             if elapsed_time < 3 then
@@ -348,8 +389,8 @@ function ellions_auto_helmet_on_unequip(item_object, bag_name)
     if not ellions_auto_helmet_is_instant_unequip_active() then
         return original_on_unequip(item_object, bag_name)
     end
-    local ok, error_message = pcall(ellions_auto_helmet_instant_unequip_from_ui, item_object, bag_name)
-    if not ok then
+    local call_succeeded, error_message = pcall(ellions_auto_helmet_instant_unequip_from_ui, item_object, bag_name)
+    if not call_succeeded then
         log_message("! [Ellion FDDA Auto Helmet] instant helmet unequip failed: " .. tostring(error_message))
         --our part did not move the helmet, let FDDA handle it
         if ellions_auto_helmet_is_helmet_in_slot(item_object) then
@@ -367,8 +408,8 @@ function ellions_auto_helmet_on_toggle_unequip(item_object)
     if not ellions_auto_helmet_is_instant_unequip_active() or not ellions_auto_helmet_is_helmet_in_slot(item_object) then
         return original_on_toggle_unequip(item_object)
     end
-    local ok, error_message = pcall(ellions_auto_helmet_instant_unequip_from_hotkey, item_object)
-    if not ok then
+    local call_succeeded, error_message = pcall(ellions_auto_helmet_instant_unequip_from_hotkey, item_object)
+    if not call_succeeded then
         log_message("! [Ellion FDDA Auto Helmet] instant helmet unequip failed: " .. tostring(error_message))
         --our part did not move the helmet, let FDDA handle it
         if ellions_auto_helmet_is_helmet_in_slot(item_object) then
@@ -429,7 +470,7 @@ end
 
 ---Decides whether the helmet must come off for this use.
 ---@param item_object game_object Item being used.
----@param flags table FDDA use flags; flags.ret_value is false when FDDA refuses the use.
+---@param flags EllionsAutoHelmetUseFlags FDDA use flags; flags.ret_value is false when FDDA refuses the use.
 ---@return boolean should_take_off True if the helmet should be taken off for this use.
 function ellions_auto_helmet_should_take_helmet_off(item_object, flags)
     if not cfg_enabled or not headgear_module then return false end
@@ -452,7 +493,7 @@ end
 
 ---Takes the helmet off and queues the consume when the use needs it.
 ---@param item_object game_object Item being used.
----@param flags table FDDA use flags; flags.ret_value is set to false when the use is taken over.
+---@param flags EllionsAutoHelmetUseFlags FDDA use flags; flags.ret_value is set to false when the use is taken over.
 ---@return boolean handled True if the use was handled (helmet taken off, consume queued), false otherwise.
 function ellions_auto_helmet_try_take_helmet_off(item_object, flags)
     if not ellions_auto_helmet_should_take_helmet_off(item_object, flags) then
@@ -467,9 +508,9 @@ function ellions_auto_helmet_try_take_helmet_off(item_object, flags)
     --move the helmet out of the slot before FDDA checks it (strict helmet mode), cosmetic unequip is queued
     db.actor:move_to_ruck(helmet)
     --tell FDDA's helmet hotkey which helmet was taken off, so the toggle key can put it back on
-    local hotkey = liz_fdda_redone_headgear_animations_hotkey
-    if hotkey and hotkey.set_last_helmet then
-        hotkey.set_last_helmet(helmet)
+    local hotkey_module = liz_fdda_redone_headgear_animations_hotkey
+    if hotkey_module and hotkey_module.set_last_helmet then
+        hotkey_module.set_last_helmet(helmet)
     end
     ellions_auto_helmet_update_mask_overlay()
     lam2.add_action(ta_ellions_auto_helmet_unequip_cosmetic(pending_section))
@@ -484,11 +525,11 @@ end
 ---Replacement for liz_fdda_redone_consumables.modifiedAOIBU. Handles the auto helmet, otherwise calls
 ---FDDA's original once with the same arguments.
 ---@param item_object game_object Item being used.
----@param flags table FDDA use flags.
+---@param flags EllionsAutoHelmetUseFlags FDDA use flags.
 ---@return any result Return value of the original modifiedAOIBU when the use is not handled here.
 function ellions_auto_helmet_modified_aoibu(item_object, flags)
-    local ok, handled = pcall(ellions_auto_helmet_try_take_helmet_off, item_object, flags)
-    if not ok then
+    local call_succeeded, handled = pcall(ellions_auto_helmet_try_take_helmet_off, item_object, flags)
+    if not call_succeeded then
         log_message("! [Ellion FDDA Auto Helmet] auto helmet failed, FDDA handles the use: " .. tostring(handled))
         handled = false
     end
@@ -501,7 +542,7 @@ end
 --- ----------------------------------------------------------------------
 
 ---Saves the pending helmet id, only when a re-equip is wanted.
----@param save_data table Save data table provided by the save_state callback.
+---@param save_data EllionsAutoHelmetSaveData Save data table provided by the save_state callback.
 ---@return nil
 function on_save_state(save_data)
     if pending_helmet_id ~= nil and pending_reequip then
@@ -510,7 +551,7 @@ function on_save_state(save_data)
 end
 
 ---Restores the pending helmet id from save data.
----@param save_data table Save data table provided by the load_state callback.
+---@param save_data EllionsAutoHelmetSaveData Save data table provided by the load_state callback.
 ---@return nil
 function on_load_state(save_data)
     pending_helmet_id = save_data.ellions_auto_helmet_pending_helmet_id
@@ -534,7 +575,7 @@ function ellions_auto_helmet_actor_on_first_update()
     --re-register the headgear handler so the inventory UI uses our instant unequip override
     local inventory_module = zzzz_liz_fdda_redone_ui_inventory
     if headgear_module and inventory_module and inventory_module.Add_Handler then
-        local ok, error_message = pcall(
+        local call_succeeded, error_message = pcall(
             inventory_module.Add_Handler,
             "headgear",
             headgear_module.predicate,
@@ -543,26 +584,26 @@ function ellions_auto_helmet_actor_on_first_update()
             headgear_module.on_drop,
             headgear_module.on_swap
         )
-        if not ok then
+        if not call_succeeded then
             log_message("! [Ellion FDDA Auto Helmet] could not re-register the headgear handler: " .. tostring(error_message))
         end
     end
 
     if pending_helmet_id == nil then return end
     local id = pending_helmet_id
-    local found = nil
+    local found_helmet = nil
     ---Iterate-ruck callback that finds the pending helmet by id.
     ---@param actor_object game_object Actor owning the ruck.
     ---@param ruck_item game_object Item being iterated.
     ---@return nil
     local function find_pending_helmet(actor_object, ruck_item)
         if ruck_item:id() == id then
-            found = ruck_item
+            found_helmet = ruck_item
         end
     end
     db.actor:iterate_ruck(find_pending_helmet, nil)
-    if found and db.actor:item_in_slot(12) == nil then
-        db.actor:move_to_slot(found, 12)
+    if found_helmet and db.actor:item_in_slot(12) == nil then
+        db.actor:move_to_slot(found_helmet, 12)
         ellions_auto_helmet_update_mask_overlay()
     end
     ellions_auto_helmet_clear_pending()
