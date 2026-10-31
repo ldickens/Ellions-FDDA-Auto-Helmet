@@ -1,11 +1,11 @@
-# Ellion's FDDA Helmet Off Consume
+# Ellion's FDDA Auto Helmet
 
 Add-on for FDDA Redone (FDDA Redone - lizzardman) for STALKER Anomaly / GAMMA.
 https://www.moddb.com/addons/fdda-redone
 
 ## Features
 
-### Helmet off consume
+### Auto helmet
 - Using an eatable item while wearing a helmet takes the helmet off, then eats the item. No more waiting for helmet to come off
 before queuing the next item to consume in the inventory.
 - Optional "Require modifier key": the helmet is only taken off while the modifier key (Shift, Ctrl or Alt) is held.
@@ -23,7 +23,7 @@ this to be useful when you want to consume multiple items in a row.
 
 ## MCM options
 
-Menu Name: Helmet Off Consume, Menu id: `ellions_hoc`. MCM is optional; without it the defaults below are used.
+Menu Name: FDDA Auto Helmet, Menu id: `ellions_auto_helmet`. MCM is optional; without it the defaults below are used.
 
 | Option | Default | Description |
 |---|---|---|
@@ -43,7 +43,7 @@ Menu Name: Helmet Off Consume, Menu id: `ellions_hoc`. MCM is optional; without 
 
 Copy the mod folder into your mod directory (or install it with your mod manager) so that `gamedata` is merged into the game data folder.  
 
-MO2: Must come after FDDA edone - lizzardman
+MO2: Must come after FDDA Redone - lizzardman
 Manual: Copied in after lizzardman
 
 ## Modding

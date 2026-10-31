@@ -1,4 +1,4 @@
---[[   Ellion's Helmet Off Consume: MCM menu (id "ellions_hoc").
+--[[   Ellion's FDDA Auto Helmet: MCM menu (id "ellions_auto_helmet").
        MCM discovers this file by its *_mcm.script name and calls on_mcm_load.   ]] --
 
 local defaults = {
@@ -10,27 +10,27 @@ local defaults = {
 }
 
 ---Returns the MCM value for a key, or the default when MCM is not installed or has no value yet.
----@param key string Key relative to the mod, e.g. "general/enable" (full MCM path is "ellions_hoc/general/enable").
+---@param key string Key relative to the mod, e.g. "general/enable" (full MCM path is "ellions_auto_helmet/general/enable").
 ---@return any config_value The current MCM value, or the default from the defaults table.
 function get_config(key)
     if ui_mcm then
-        local mcm_value = ui_mcm.get("ellions_hoc/" .. key)
+        local mcm_value = ui_mcm.get("ellions_auto_helmet/" .. key)
         if mcm_value ~= nil then return mcm_value end
     end
     return defaults[key]
 end
 
 ---Builds the MCM options table for this mod. Called by MCM when it loads the mod's menu.
----@return table mcm_options MCM options table with the "ellions_hoc" id and its groups.
+---@return table mcm_options MCM options table with the "ellions_auto_helmet" id and its groups.
 function on_mcm_load()
     local mcm_options = {
-        id = "ellions_hoc",
+        id = "ellions_auto_helmet",
         gr = {
             {
                 id = "general",
                 sh = true,
                 gr = {
-                    { id = "slide", type = "slide", link = "ui_options_slider_player", text = "ui_mcm_menu_ellions_hoc", size = { 512, 50 }, spacing = 20 },
+                    { id = "slide", type = "slide", link = "ui_options_slider_player", text = "ui_mcm_menu_ellions_auto_helmet", size = { 512, 50 }, spacing = 20 },
                     { id = "enable", type = "check", val = 1, def = true },
                     { id = "use_modifier", type = "check", val = 1, def = true },
                     { id = "modifier", type = ui_mcm.kb_mod_radio, val = 2, def = 2, content = { { 1, "mcm_kb_mod_shift" }, { 2, "mcm_kb_mod_ctrl" }, { 3, "mcm_kb_mod_alt" } } },
