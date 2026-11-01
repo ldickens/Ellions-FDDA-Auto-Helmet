@@ -1,0 +1,5 @@
+# Keep GitHub's auto-generated release source archives limited to README.md and gamedata
+.gitattributes export-ignore
+.gitignore export-ignore
+.github export-ignore
+meta.ini export-ignore
